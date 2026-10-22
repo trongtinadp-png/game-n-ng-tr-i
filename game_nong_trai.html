@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Nông Trại Vui Vẻ Mở Rộng 2026</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #2c3e50;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: white;
+            user-select: none;
+        }
+        #game-container {
+            position: relative;
+            background: #34495e;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        #hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 800px;
+            margin-bottom: 10px;
+            background: rgba(0,0,0,0.4);
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        .stat {
+            font-size: 20px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        canvas {
+            background: #27ae60;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+        }
+        #toolbar {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+            width: 800px;
+        }
+        .btn {
+            background: #e67e22;
+            border: none;
+            color: white;
+            padding: 12px 18px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px #d35400;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+        .btn:hover {
+            background: #f39c12;
+            transform: translateY(-2px);
+        }
+        .btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px #d35400;
+        }
+        .btn.active {
+            background: #2ecc71;
+            box-shadow: 0 4px #27ae60;
+        }
+        .btn span {
+            font-size: 11px;
+            opacity: 0.9;
+            font-weight: normal;
+        }
+        #msg {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 14px;
+            color: #f1c40f;
+            height: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Bảng thông tin HUD -->
+        <div id="hud">
+            <div class="stat" id="coin-display">💰 Tiền vàng: 100</div>
+            <div class="stat" style="color: #f1c40f;">🧑‍🌾 Trạng thái: Sẵn sàng</div>
+        </div>
+
+        <!-- Khung vẽ Game -->
+        <canvas id="farmCanvas" width="800" height="500"></canvas>
+
+        <!-- Thanh công cụ hành động -->
+        <div id="toolbar">
+            <button class="btn active" onclick="setTool('harvest', this)">🌾 Thu Hoạch<span>(Bấm vào nông sản chín)</span></button>
+            <button class="btn" onclick="setTool('plant_rice', this)">🌱 Gieo Lúa<span>(Mua: 💰10)</span></button>
+            <button class="btn" onclick="setTool('plant_tree', this)">🌳 Trồng Cây<span>(Mua: 💰25)</span></button>
+            <button class="btn" onclick="setTool('water', this)">💧 Tưới Nước<span>(Miễn phí - X2 lớn nhanh)</span></button>
+            <button class="btn" onclick="setTool('buy_chicken', this)">🐔 Mua Gà<span>(Mua: 💰50)</span></button>
+            <button class="btn" onclick="setTool('buy_cow', this)">🐄 Mua Bò<span>(Mua: 💰80)</span></button>
+        </div>
+        
+        <div id="msg" id="message-log">Chào mừng bạn đến với trang trại vui vẻ! Hãy gieo hạt và chăm sóc vật nuôi.</div>
+    </div>
+
+<script>
+const canvas = document.getElementById('farmCanvas');
+const ctx = canvas.getContext('2d');
+
+// Cấu hình âm thanh tự động (Web Audio API)
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (type === 'click') {
+        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+    } else if (type === 'water') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+    } else if (type === 'money') {
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.08); // A5
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+    } else if (type === 'animal') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+    }
+}
+
+// Trạng thái tài chính toàn cục
+let gold = 100;
+let currentTool = 'harvest';
+
+// Định nghĩa thông số Ô Đất (Grid)
+const startGridX = 50, startGridY = 80;
+const rows = 4, cols = 5;
+const tileSize = 70, gap = 15;
+let plots = [];
+
+for(let r=0; r<rows; r++) {
+    for(let c=0; c<cols; c++) {
+        plots.push({
+            id: r * cols + c,
+            x: startGridX + c * (tileSize + gap),
+            y: startGridY + r * (tileSize + gap),
+            w: tileSize, h: tileSize,
+            crop: null,       // 'rice', 'tree'
+            stage: 0,         // 0: hạt/mầm, 1: cây non, 2: chín thu hoạch
+            watered: false,   // Đất có nước tưới hay không
+            progress: 0,      // Tiến trình lớn lên (%)
+            sparkleTime: 0    // Tạo hiệu ứng lấp lánh cho đồng vàng
+        });
+    }
+}
+
+// Thông số Nông Dân
+const farmer = {
+    x: 400, y: 250,
+    targetX: 400, targetY: 250,
+    speed: 4,
+    size: 24,
+    isMoving: false,
+    task: null // Công việc sẽ xử lý khi đi tới đích
+};
+
+// Thông số Vật nuôi & Chuồng nuôi
+const animalPen = { x: 500, y: 80, w: 260, h: 325 };
+let animals = [];
+let products = []; // Các sản phẩm trứng, sữa rơi ra
+
+// Thiết lập chọn công cụ thao tác
+function setTool(tool, element) {
+    currentTool = tool;
+    document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+    element.classList.add('active');
+    playSound('click');
+}
+
+function showMsg(text) {
+    document.getElementById('msg').innerText = text;
+}
+
+// Bắt sự kiện Click trên Canvas để điều khiển nông dân hành động
+canvas.addEventListener('click', function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    // 1. Kiểm tra click vào hệ thống ô đất
+    for(let plot of plots) {
+        if(clickX >= plot.x && clickX <= plot.x + plot.w && clickY >= plot.y && clickY <= plot.y + plot.h) {
+            farmer.targetX = plot.x + plot.w/2;
+            farmer.targetY = plot.y + plot.h/2;
+            farmer.isMoving = true;
+            farmer.task = { type: 'grid', targetId: plot.id, action: currentTool };
+            return;
+        }
+    }
+
+    // 2. Kiểm tra click nhặt trứng/sữa của vật nuôi trong chuồng
+    for(let i = products.length - 1; i >= 0; i--) {
+        let p = products[i];
+        let dist = Math.hypot(clickX - p.x, clickY - p.y);
+        if(dist < 20) {
+            farmer.targetX = p.x;
+            farmer.targetY = p.y;
+            farmer.isMoving = true;
+            farmer.task = { type: 'product', index: i };
+            return;
+        }
+    }
+
+    // 3. Nếu mua vật nuôi, bấm vào chuồng nuôi để thả vật nuôi
+    if((currentTool === 'buy_chicken' || currentTool === 'buy_cow') &&
+        clickX >= animalPen.x && clickX <= animalPen.x + animalPen.w &&
+        clickY >= animalPen.y && clickY <= animalPen.y + animalPen.h) {
+            farmer.targetX = clickX;
+            farmer.targetY = clickY;
+            farmer.isMoving = true;
+            farmer.task = { type: 'buy_animal', action: currentTool, x: clickX, y: clickY };
+            return;
+    }
+
+    // Nếu bấm ra khoảng trống thuần túy, di chuyển nông dân đến đó
+    farmer.targetX = clickX;
+    farmer.targetY = clickY;
+    farmer.isMoving = true;
+    farmer.task = null;
+});
+
+// Hàm xử lý logic cốt lõi khi nông dân tiếp cận vị trí yêu cầu
+function executeTask() {
+    if (!farmer.task) return;
+    const task = farmer.task;
+
+    if (task.type === 'grid') {
+        let plot = plots.find(p => p.id === task.targetId);
+        if (!plot) return;
+
+        if (task.action === 'plant_rice') {
+            if (plot.crop) { showMsg("Ô đất này đã được sử dụng rồi!"); return; }
+            if (gold >= 10) { gold -= 10; plot.crop = 'rice'; plot.stage = 0; plot.progress = 0; playSound('click'); showMsg("Đã gieo một hạt lúa thần thần tốc!"); } 
+            else { showMsg("Không đủ tiền mua hạt giống lúa (💰10)!"); }
+        } 
+else if (task.action === 'plant_tree') {
+if (plot.crop) { showMsg("Ô đất này đã được sử dụng rồi!"); return; }
+if (gold >= 25) { gold -= 25; plot.crop = 'tree'; plot.stage = 0; plot.progress = 0; playSound('click'); showMsg("Đã trồng một cây ăn quả đại thụ!"); }
+else { showMsg("Không đủ tiền mua cây giống (💰25)!"); }
+}
+else if (task.action === 'water') {
+if (!plot.crop) { showMsg("Hãy gieo hạt giống trước khi tưới nước."); return; }
+plot.watered = true;
+playSound('water');
+showMsg("Đất ẩm nước, cây cối tăng trưởng x2 tốc độ!");
+}
+else if (task.action === 'harvest') {
+if (plot.crop && plot.stage === 2) {
+let gain = plot.crop === 'rice' ? 25 : 60;
+gold += gain;
+playSound('money');
+showMsg(Thu hoạch thành công! Nhận về +💰${gain} Đồng vàng.);
+plot.crop = null; plot.stage = 0; plot.progress = 0; plot.watered = false;
+} else if (plot.crop) {
+showMsg("Nông sản chưa chín hẳn, hãy chờ đợi thêm!");
+}
+}
+}
+else if (task.type === 'buy_animal') {
+if (task.action === 'buy_chicken') {
+if (gold >= 50) {
+gold -= 50;
+animals.push({ type: 'chicken', x: task.x, y: task.y, vx: 1, vy: 1, timer: 0 });
+playSound('animal'); showMsg("Mua Gà con thành công! Gà sẽ tự động đẻ trứng.");
+} else { showMsg("Không đủ tiền mua gà (💰50)!"); }
+} else if (task.action === 'buy_cow') {
+if (gold >= 80) {
+gold -= 80;
+animals.push({ type: 'cow', x: task.x, y: task.y, vx: 0.8, vy: 0.8, timer: 0 });
+playSound('animal'); showMsg("Mua Bò sữa thành công! Bò sẽ tự động cho sữa.");
+} else { showMsg("Không đủ tiền mua bò (💰80)!"); }
+}
+}
+else if (task.type === 'product') {
+let p = products[task.index];
+if (p) {
+gold += p.value;
+playSound('money');
+showMsg(Nhặt nông sản vật nuôi thu về +💰${p.value} Đồng Vàng!);
+products.splice(task.index, 1);
+}
+}
+farmer.task = null;
+document.getElementById('coin-display').innerText = 💰 Tiền vàng: ${gold};
+}
+// Vòng lặp cập nhật dữ liệu liên tục (Update Game State)
+function update() {
+// 1. Cập nhật di chuyển Nông dân
+if (farmer.isMoving) {
+let dx = farmer.targetX - farmer.x;
+let dy = farmer.targetY - farmer.y;
+let dist = Math.hypot(dx, dy);
+if (dist > farmer.speed) {
+farmer.x += (dx / dist) * farmer.speed;
+farmer.y += (dy / dist) * farmer.speed;
+} else {
+farmer.x = farmer.targetX;
+farmer.y = farmer.targetY;
+farmer.isMoving = false;
+executeTask(); // Thực thi hành động khi đến đích
+}
+}
+// 2. Cập nhật cây lớn lên theo thời gian
+plots.forEach(plot => {
+if (plot.crop && plot.stage < 2) {
+let growSpeed = plot.watered ? 0.3 : 0.15; // Tưới nước tăng tốc gấp đôi
+plot.progress += growSpeed;
+if (plot.progress >= 50 && plot.stage === 0) { plot.stage = 1; }
+if (plot.progress >= 100) { plot.stage = 2; plot.progress = 100; }
+}
+if (plot.stage === 2) {
+plot.sparkleTime = (plot.sparkleTime + 1) % 30; // Tạo dao động lấp lánh
+}
+});
+// 3. Cập nhật vật nuôi di chuyển thông minh trong khu chuồng trại
+animals.forEach(ani => {
+ani.x += ani.vx;
+ani.y += ani.vy;
+// Va chạm giới hạn tường bao quanh chuồng nuôi
+if (ani.x < animalPen.x + 15 || ani.x > animalPen.x + animalPen.w - 15) ani.vx *= -1;
+if (ani.y < animalPen.y + 15 || ani.y > animalPen.y + animalPen.h - 15) ani.vy *= -1;
+// Cơ chế sản xuất trứng, sữa định kỳ ngẫu nhiên
+ani.timer += 1;
+if(ani.timer > 400 + Math.random() * 200) {
+ani.timer = 0;
+if(ani.type === 'chicken') {
+products.push({ type: 'egg', x: ani.x, y: ani.y, value: 15 });
+} else {
+products.push({ type: 'milk', x: ani.x, y: ani.y, value: 30 });
+}
+}
+});
+}
+// Hàm vẽ Đồ Họa chính lên màn hình Canvas (Render Game)
+function draw() {
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+// Vẽ Kênh rạch/Dòng sông nước điều tiết ở rìa trái bản đồ sinh thái
+ctx.fillStyle = '#2980b9';
+ctx.fillRect(0, 0, 30, canvas.height);
+// Nhãn dòng sông nước sạch
+ctx.save();
+ctx.translate(20, 250);
+ctx.rotate(-Math.PI/2);
+ctx.fillStyle = '#fff';
+ctx.font = '12px Arial';
+ctx.textAlign = 'center';
+ctx.fillText("💧 KÊN H NƯỚC ĐIỀU TIẾT 💧", 0, 0);
+ctx.restore();
+// Vẽ Hệ thống các Ô Đất trồng trọt
+plots.forEach(plot => {
+// Màu nền của đất tùy theo độ ẩm nước tưới tiêu
+ctx.fillStyle = plot.watered ? '#5c4033' : '#855e42';
+ctx.fillRect(plot.x, plot.y, plot.w, plot.h);
+ctx.strokeStyle = '#d35400';
+ctx.lineWidth = 2;
+ctx.strokeRect(plot.x, plot.y, plot.w, plot.h);
+// Đồ họa vẽ cây trồng dựa trên giai đoạn phát triển cụ thể
+if (plot.crop) {
+ctx.textAlign = 'center';
+ctx.textBaseline = 'middle';
+if (plot.crop === 'rice') {
+if (plot.stage === 0) { ctx.font = '16px Arial'; ctx.fillText('🌱', plot.x + plot.w/2, plot.y + plot.h/2); }
+else if (plot.stage === 1) { ctx.font = '24px Arial'; ctx.fillText('🌿', plot.x + plot.w/2, plot.y + plot.h/2); }
+else {
+ctx.font = '34px Arial'; ctx.fillText('🌾', plot.x + plot.w/2, plot.y + plot.h/2);
+// Vẽ đồng tiền vàng lấp lánh phản chiếu hào quang khi chín vàng rực
+if(plot.sparkleTime < 15) {
+ctx.font = '14px Arial'; ctx.fillText('🪙', plot.x + plot.w - 12, plot.y + 12);
+}
+}
+} else if (plot.crop === 'tree') {
+if (plot.stage === 0) { ctx.font = '18px Arial'; ctx.fillText('🌿', plot.x + plot.w/2, plot.y + plot.h/2); }
+else if (plot.stage === 1) { ctx.font = '28px Arial'; ctx.fillText('🌲', plot.x + plot.w/2, plot.y + plot.h/2); }
+else {
+ctx.font = '36px Arial'; ctx.fillText('🌳', plot.x + plot.w/2, plot.y + plot.h/2);
+if(plot.sparkleTime < 15) {
+ctx.font = '14px Arial'; ctx.fillText('🪙', plot.x + plot.w - 12, plot.y + 12);
+}
+}
+}
+// Thanh Tiến độ Sinh Trưởng dưới mỗi ô đất
+if (plot.stage < 2) {
+ctx.fillStyle = '#7f8c8d';
+ctx.fillRect(plot.x + 5, plot.y + plot.h - 10, plot.w - 10, 5);
+ctx.fillStyle = '#2ecc71';
+ctx.fillRect(plot.x + 5, plot.y + plot.h - 10, (plot.w - 10) * (plot.progress / 100), 5);
+}
+}
+});
+// Vẽ Chuồng nuôi Gia súc (Animal Pen) chuyên dụng bên phải trang trại
+ctx.fillStyle = '#95a5a6';
+ctx.fillRect(animalPen.x, animalPen.y, animalPen.w, animalPen.h);
+ctx.strokeStyle = '#7f8c8d';
+ctx.lineWidth = 5;
+ctx.strokeRect(animalPen.x, animalPen.y, animalPen.w, animalPen.h);
+// Nhãn Tiêu đề Chuồng trại
+ctx.fillStyle = '#2c3e50';
+ctx.font = 'bold 14px Arial';
+ctx.textAlign = 'center';
+ctx.fillText("🏡 KHU VỰC CHUỒNG NUÔI", animalPen.x + animalPen.w/2, animalPen.y + 20);
+// Vẽ các con Vật nuôi đang dạo chơi tự do
+ctx.font = '22px Arial';
+ctx.textAlign = 'center';
+ctx.textBaseline = 'middle';
+animals.forEach(ani => {
+let emoji = ani.type === 'chicken' ? '🐔' : '🐄';
+ctx.fillText(emoji, ani.x, ani.y);
+});
+// Vẽ sản phẩm rớt ra từ gia súc (Trứng gà, Sữa bò tươi)
+products.forEach(p => {
+let emoji = p.type === 'egg' ? '🥚' : '🥛';
+ctx.font = '18px Arial';
+ctx.fillText(emoji, p.x, p.y);
+// Vẽ vòng tròn phát sáng nhỏ thu hút ánh nhìn
+ctx.strokeStyle = '#f1c40f';
+ctx.lineWidth = 1;
+ctx.beginPath();
+ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+ctx.stroke();
+});
+// Vẽ nhân vật Nông Dân chính (Farmer) điều khiển
+ctx.font = '32px Arial';
+ctx.textAlign = 'center';
+ctx.textBaseline = 'middle';
+ctx.fillText('🧑‍🌾', farmer.x, farmer.y);
+// Vẽ mục tiêu đến nếu nông dân đang chạy bộ di chuyển hành động
+if(farmer.isMoving) {
+ctx.strokeStyle = 'rgba(241, 196, 15, 0.6)';
+ctx.lineWidth = 2;
+ctx.beginPath();
+ctx.arc(farmer.targetX, farmer.targetY, 8, 0, Math.PI * 2);
+ctx.stroke();
+}
+}
+// Khởi chạy vòng lặp Game chính thức (Game Loop)
+function gameLoop() {
+update();
+draw();
+requestAnimationFrame(gameLoop);
+}
+// Bắt đầu chơi game
+gameLoop();
